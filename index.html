@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>인접행렬을 활용한 AMR 창고 경로 탐색기</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 헤더 영역 -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="header-badge">고등학교 인공지능을 위한 이산수학 수행평가</div>
+      <h1 class="header-title">인접행렬을 활용한 AMR 창고 경로 탐색기</h1>
+      <p class="header-desc">
+        물류 창고의 노드(장소)와 에지(통로)를 <strong>그래프</strong>와 <strong>인접행렬</strong>로 모델링하고,
+        <strong>행렬의 거듭제곱(Aⁿ)</strong>을 활용하여 자율이동로봇(AMR)의 <strong>최소 통로 통과 횟수</strong> 및 가능한 최단 경로를 탐색합니다.
+      </p>
+    </div>
+  </header>
+
+  <!-- 메인 컨테이너 -->
+  <main class="main-container">
+    
+    <!-- 상단 대시보드 그리드: 좌측(그래프 & 제어) / 우측(경로 탐색 결과 & 손 계산 비교) -->
+    <div class="dashboard-grid">
+      
+      <!-- 좌측 패널: 창고 그래프 및 통로 제어 -->
+      <section class="card left-panel" aria-labelledby="graph-section-title">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">🏭</span>
+            <h2 id="graph-section-title" class="card-title">창고 연결 그래프 & 통로 제어</h2>
+          </div>
+          <button id="btn-reset" class="btn btn-secondary" title="초기 통로 7개 연결 및 A→D 설정으로 복원">
+            🔄 초기 상태로 복원
+          </button>
+        </div>
+
+        <!-- 사용 안내 요약 -->
+        <div class="guide-box">
+          <span class="guide-icon">💡</span>
+          <span>출발지·도착지를 선택하고 통로를 차단/복구해 보세요. 그래프 위의 노드나 통로를 직접 클릭해도 조작할 수 있습니다.</span>
+        </div>
+
+        <!-- 출발지 / 도착지 선택기 -->
+        <div class="selection-bar">
+          <div class="select-group">
+            <label for="start-node-select">
+              <span class="node-indicator start-indicator">출발</span>
+              출발 구역:
+            </label>
+            <select id="start-node-select" class="form-select"></select>
+          </div>
+          <div class="swap-btn-wrap">
+            <button id="btn-swap-nodes" class="btn-icon" title="출발지와 도착지 맞바꾸기">⇄</button>
+          </div>
+          <div class="select-group">
+            <label for="dest-node-select">
+              <span class="node-indicator dest-indicator">도착</span>
+              도착 구역:
+            </label>
+            <select id="dest-node-select" class="form-select"></select>
+          </div>
+        </div>
+
+        <!-- 인터랙티브 SVG 창고 그래프 -->
+        <div class="graph-wrapper">
+          <div class="graph-legend">
+            <span class="legend-item"><span class="legend-dot dot-start"></span> 출발지</span>
+            <span class="legend-item"><span class="legend-dot dot-dest"></span> 도착지</span>
+            <span class="legend-item"><span class="legend-line line-path"></span> 선택된 최소 경로</span>
+            <span class="legend-item"><span class="legend-line line-blocked"></span> 차단된 통로</span>
+          </div>
+          <svg id="warehouse-graph" viewBox="0 0 660 380" class="graph-svg" aria-label="창고 구역 연결 그래프">
+            <!-- 동적으로 생성되는 에지, 마커, 노드 -->
+          </svg>
+        </div>
+
+        <!-- 통로 상태 및 악수 보조정리 통계 -->
+        <div class="corridor-status-card">
+          <div class="status-summary-row">
+            <div class="stat-badge">
+              <span class="stat-label">이용 가능한 통로:</span>
+              <strong id="stat-active-edges" class="stat-value">7</strong> / 7개
+            </div>
+            <div class="stat-badge">
+              <span class="stat-label">인접행렬 성분의 총합:</span>
+              <strong id="stat-matrix-sum" class="stat-value">14</strong>
+            </div>
+          </div>
+          <div class="handshake-lemma" id="handshake-lemma-box">
+            ✅ <strong>차수의 합 / 대칭행렬 성분의 합:</strong> 성분의 합(14) = 통로 수(7) × 2 성립
+          </div>
+        </div>
+
+        <!-- 통로별 차단 / 복구 제어 리스트 -->
+        <div class="corridor-toggle-section">
+          <h3 class="subsection-title">통로별 개별 차단 및 복구 (총 7개)</h3>
+          <div class="corridor-grid" id="corridor-button-grid">
+            <!-- JS로 동적 생성 -->
+          </div>
+        </div>
+      </section>
+
+      <!-- 우측 패널: 최소 통로 통과 횟수 & 손 계산 비교 -->
+      <section class="card right-panel" aria-labelledby="result-section-title">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">🤖</span>
+            <h2 id="result-section-title" class="card-title">AMR 경로 탐색 결과 & 거듭제곱 판정</h2>
+          </div>
+        </div>
+
+        <!-- 탐색 결과 메인 배너 -->
+        <div class="result-banner" id="result-banner">
+          <div class="result-label">출발지에서 도착지까지의 최소 통로 통과 횟수</div>
+          <div class="result-main-value">
+            <span id="result-steps-count" class="big-number">2</span>
+            <span id="result-steps-unit" class="unit">회</span>
+          </div>
+          <div class="result-basis" id="result-basis-text">
+            판정 근거: A²의 (1행, 4열) 성분이 처음으로 양수(2)가 됨
+          </div>
+        </div>
+
+        <!-- 수학적 경로 원리 알림 -->
+        <div class="info-alert">
+          <strong>📌 경로 판정 원리:</strong> 꼭짓점이 6개인 그래프에서 서로 다른 두 지점 사이의 최소 단순 경로는 최대 5개의 통로를 사용합니다. 
+          따라서 \(A^1\)부터 \(A^5\)까지 거듭제곱 중 해당 성분이 <strong>처음으로 양수가 되는 지수 \(n\)</strong>이 곧 <strong>최소 통로 통과 횟수</strong>가 됩니다.
+        </div>
+
+        <!-- 탐색된 최소 경로 목록 -->
+        <div class="paths-section">
+          <div class="paths-header">
+            <h3 class="subsection-title">탐색된 최소 경로 목록 (<span id="path-count-badge">2</span>개)</h3>
+            <span class="sub-hint">경로를 클릭하면 위 그래프에 해당 경로가 강조됩니다.</span>
+          </div>
+          <div class="paths-list" id="paths-list-container">
+            <!-- JS로 동적 생성 -->
+          </div>
+        </div>
+
+        <!-- 손 계산 비교 기능 카드 -->
+        <div class="hand-calc-card">
+          <div class="hand-calc-header">
+            <span class="hand-calc-icon">✍️</span>
+            <h3 class="subsection-title mb-0">교과서 손 계산 검증 & 프로그램 비교</h3>
+          </div>
+          
+          <div class="hand-calc-target">
+            <strong>대상:</strong> 초기 상태의 1번 A(입고) → 4번 D(분류) 이동 시 \((A^2)\)의 1행 4열
+          </div>
+
+          <!-- 손 계산 식 펼침 -->
+          <div class="formula-box">
+            <div class="formula-line">
+              <strong>\((A^2)\)의 1행 4열</strong>
+            </div>
+            <div class="formula-line math-code">
+              = (0×0) + (1×1) + (1×1) + (0×0) + (0×0) + (0×1)
+            </div>
+            <div class="formula-line">
+              = 0 + 1 + 1 + 0 + 0 + 0 = <strong>2</strong>
+            </div>
+          </div>
+
+          <p class="hand-calc-meaning">
+            👉 <strong>수학적 의미:</strong> 입고 구역(A)에서 분류 구역(D)까지 통로를 정확히 2번 지나 이동하는 방법이 <strong>2가지</strong>(A→B→D, A→C→D)임을 의미합니다.
+          </p>
+
+          <!-- 손 계산 vs 프로그램 계산 비교표 -->
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead>
+                <tr>
+                  <th>구분</th>
+                  <th>손 계산 값 (초기 그래프)</th>
+                  <th>프로그램 계산 값 (\(A^2_{1,4}\))</th>
+                  <th>일치 여부</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>1행 4열 성분</strong></td>
+                  <td><span class="badge-number">2</span></td>
+                  <td><span id="current-a2-14-val" class="badge-number">2</span></td>
+                  <td><span id="hand-calc-match-status" class="badge-match match">일치 ✅</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 통로 변경 시 알림 메시지 (계산 오류가 아님을 명시) -->
+          <div id="corridor-modified-warning" class="warning-callout hidden">
+            <span class="warning-icon">ℹ️</span>
+            <div>
+              <strong>알림:</strong> 통로가 변경되었습니다. 위 손 계산 풀이는 <strong>초기 고정 그래프에 대한 값(2)</strong>이며, 
+              통로 차단에 따라 프로그램 계산 값이 달라진 것은 그래프 구조가 바뀌었기 때문이므로 <strong>계산 오류가 아닙니다</strong>.
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </div>
+
+    <!-- 하단 전체 폭 카드: 인접행렬 및 거듭제곱 계산 과정 (행×열 펼침) -->
+    <section class="card bottom-panel" aria-labelledby="matrix-section-title">
+      <div class="card-header flex-between">
+        <div class="card-title-group">
+          <span class="card-icon">🔢</span>
+          <h2 id="matrix-section-title" class="card-title">행렬 거듭제곱 곱셈 과정 및 성분 탐색</h2>
+        </div>
+        
+        <!-- 행렬 거듭제곱 차수 선택 탭 -->
+        <div class="matrix-tabs" role="tablist" aria-label="행렬 거듭제곱 차수 선택">
+          <button class="tab-btn" data-power="1" role="tab">A (인접행렬)</button>
+          <button class="tab-btn active" data-power="2" role="tab">A² = A × A</button>
+          <button class="tab-btn" data-power="3" role="tab">A³ = A² × A</button>
+          <button class="tab-btn" data-power="4" role="tab">A⁴ = A³ × A</button>
+          <button class="tab-btn" data-power="5" role="tab">A⁵ = A⁴ × A</button>
+        </div>
+      </div>
+
+      <div class="matrix-instruction">
+        👉 결과 행렬의 성분을 클릭하면, 해당 성분을 만드는 <strong>왼쪽 행렬의 행</strong>과 <strong>오른쪽 행렬의 열</strong>이 강조되고 6개 항의 계산식이 상세히 펼쳐집니다.
+      </div>
+
+      <!-- 행렬 곱셈 시각화 영역: Left Matrix × Right Matrix = Result Matrix -->
+      <div class="matrix-multiplication-container">
+        
+        <!-- 왼쪽 행렬 (Aⁿ⁻¹) -->
+        <div class="matrix-block" id="left-matrix-block">
+          <div class="matrix-block-title" id="left-matrix-title">왼쪽 행렬: A</div>
+          <div class="matrix-table-wrap">
+            <table class="matrix-table" id="left-matrix-table"></table>
+          </div>
+        </div>
+
+        <!-- 곱셈 기호 -->
+        <div class="matrix-operator" id="matrix-operator-symbol">×</div>
+
+        <!-- 오른쪽 행렬 (A) -->
+        <div class="matrix-block" id="right-matrix-block">
+          <div class="matrix-block-title" id="right-matrix-title">오른쪽 행렬: A</div>
+          <div class="matrix-table-wrap">
+            <table class="matrix-table" id="right-matrix-table"></table>
+          </div>
+        </div>
+
+        <!-- 등호 기호 -->
+        <div class="matrix-operator" id="matrix-equals-symbol">=</div>
+
+        <!-- 결과 행렬 (Aⁿ) -->
+        <div class="matrix-block result-block" id="result-matrix-block">
+          <div class="matrix-block-title" id="result-matrix-title">결과 행렬: A² (클릭 가능)</div>
+          <div class="matrix-table-wrap">
+            <table class="matrix-table clickable-matrix" id="result-matrix-table"></table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 선택한 성분의 상세 곱셈·덧셈 전개식 박스 -->
+      <div class="calculation-expansion-card" id="calc-expansion-box">
+        <div class="calc-expansion-header">
+          <span class="calc-badge">계산 전개식</span>
+          <h3 class="calc-expansion-title" id="calc-expansion-title">
+            (A²)의 1행 4열 성분 계산 과정 [1번 A(입고) → 4번 D(분류)]
+          </h3>
+        </div>
+
+        <div class="expansion-content">
+          <!-- 벡터 표시 -->
+          <div class="vector-expression">
+            <div class="vector-row">
+              <span class="vector-tag tag-row">왼쪽 행(1행):</span>
+              <span id="expr-row-vector" class="vector-text">[0, 1, 1, 0, 0, 0]</span>
+            </div>
+            <div class="vector-col">
+              <span class="vector-tag tag-col">오른쪽 열(4열):</span>
+              <span id="expr-col-vector" class="vector-text">[0, 1, 1, 0, 0, 1]ᵀ</span>
+            </div>
+          </div>
+
+          <!-- 생략 없는 6개 항 전개식 -->
+          <div class="detailed-formula-display" id="detailed-formula-display">
+            <!-- JS 동적 생성 -->
+          </div>
+
+          <!-- 경유지별 해석 -->
+          <div class="intermediate-breakdown" id="intermediate-breakdown">
+            <!-- JS 동적 생성 -->
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 수학적 의미와 모델의 한계 섹션 -->
+    <section class="card theory-panel" aria-labelledby="theory-section-title">
+      <div class="card-header">
+        <div class="card-title-group">
+          <span class="card-icon">📚</span>
+          <h2 id="theory-section-title" class="card-title">수학적 의미 & 실제 창고 모델의 한계점</h2>
+        </div>
+      </div>
+
+      <div class="theory-grid">
+        <!-- 수학적 의미 -->
+        <div class="theory-box">
+          <h3 class="theory-box-title">📐 이산수학 그래프 & 행렬의 수학적 의미</h3>
+          <ul class="theory-list">
+            <li>
+              <strong>인접행렬(Adjacency Matrix)의 정의:</strong>
+              두 꼭짓점(장소) 사이에 직접 연결된 통로가 있으면 <code>1</code>, 없으면 <code>0</code>으로 나타낸 정사각행렬입니다.
+            </li>
+            <li>
+              <strong>행렬의 거듭제곱 \(A^n\)의 의미:</strong>
+              \(A^n\)의 \((i, j)\) 성분은 \(i\)번 꼭짓점에서 \(j\)번 꼭짓점까지 <strong>통로를 정확히 \(n\)번 지나서 이동하는 서로 다른 경로(Walk)의 수</strong>를 의미합니다. 여기에는 장소나 통로를 되돌아오거나 반복하는 이동도 포함됩니다.
+            </li>
+            <li>
+              <strong>성분 값과 최소 이동 횟수의 구별:</strong>
+              \(A^2\)의 성분 값 자체(예: 2)는 이동 횟수가 아니라 <strong>‘2번 지나서 가는 경로의 가짓수’</strong>입니다.
+            </li>
+            <li>
+              <strong>최소 통로 통과 횟수 판정:</strong>
+              서로 다른 두 지점 사이에서 \(A^1, A^2, A^3, \dots\) 순서로 거듭제곱을 계산했을 때, <strong>해당 \((i, j)\) 성분이 처음으로 0보다 큰 양수가 되는 지수 \(n\)</strong>이 바로 두 장소 사이의 ‘최소 통로 통과 횟수’입니다.
+            </li>
+            <li>
+              <strong>성분의 합과 통로 수의 관계(악수 보조정리):</strong>
+              무방향(양방향) 그래프의 인접행렬은 대칭행렬이므로, 인접행렬의 모든 성분의 합은 항상 <strong>통로(에지)의 수 × 2</strong>가 됩니다.
+            </li>
+          </ul>
+        </div>
+
+        <!-- 모델의 한계 -->
+        <div class="theory-box warning-box">
+          <h3 class="theory-box-title">⚠️ 실제 창고 물류 시스템 대비 모델의 한계</h3>
+          <ul class="theory-list">
+            <li>
+              <strong>거리 및 시간 미반영:</strong>
+              이 모델은 통로별 물리적 길이(m), 로봇의 주행 속도, 가감속, 회전(코너링) 시간 등을 고려하지 않습니다. 결과는 ‘최단 거리’나 ‘최소 시간’이 아닌 <strong>‘최소 통로 통과 횟수(최소 홉 수)’</strong>입니다.
+            </li>
+            <li>
+              <strong>그래프 선 길이의 무의미성:</strong>
+              화면의 그래프 선 길이는 시각적 이해를 돕기 위한 배치일 뿐, 실제 창고 통로의 물리적 거리를 나타내지 않습니다.
+            </li>
+            <li>
+              <strong>로봇 간 충돌 및 병목 미고려:</strong>
+              여러 대의 AMR이 동시에 운행할 때 발생하는 통로 폭 제한, 맞은편 로봇과의 교행 문제, 교차로 대기 및 충돌 회피 알고리즘은 반영되어 있지 않습니다.
+            </li>
+            <li>
+              <strong>공정 작업 자동 수행 불가:</strong>
+              단순히 중간 장소(검수 구역, 분류 구역)를 지나간다고 해서 해당 구역의 입·출고 또는 검수·분류 작업이 자동으로 완료되는 것은 아닙니다.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 푸터 -->
+  <footer class="app-footer">
+    <div class="footer-container">
+      <p>고등학교 『인공지능을 위한 이산수학』 수행평가 학습 도구 | 인접행렬과 거듭제곱을 활용한 AMR 창고 경로 최적화</p>
+      <p class="footer-sub">순수 HTML/CSS/JavaScript로 구현되어 외부 라이브러리 및 서버 없이 브라우저에서 독립 작동합니다.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
